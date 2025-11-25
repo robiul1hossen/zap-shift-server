@@ -56,7 +56,12 @@ async function run() {
       const result = await parcelsCollection.deleteOne(query);
       res.send(result);
     });
-
+    app.get("/parcels/:id", async (req, res) => {
+      const { id } = req.params;
+      const query = { _id: new ObjectId(id) };
+      const result = await parcelsCollection.findOne(query);
+      res.send(result);
+    });
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
