@@ -5,6 +5,14 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const stripe = require("stripe")(process.env.STRIPE_SECRET);
 const crypto = require("crypto");
 
+const admin = require("firebase-admin");
+
+const serviceAccount = require("./zap-shift-firebase-adminsdk.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -20,9 +28,24 @@ const generateTrackingId = () => {
 app.use(express.json());
 app.use(cors());
 
+const verifyFBToken = async (req, res, next) => {
+  const token = req.headers.authorization;
+  // console.log(token);
+  if (!token) {
+    res.status(401).send({ message: "unauthorize access" });
+  }
+  try {
+    const tokenId = token.split(" ")[1];
+    const decoded = await admin.auth().verifyIdToken(tokenId);
+    req.decoded_email = decoded.email;
+    next();
+  } catch (error) {
+    return res.status(401).send({ message: "unauthorize access" });
+  }
+};
+
 // mongodbURI
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.d2halvx.mongodb.net/?appName=Cluster0`;
-
 //   mongodb connection
 const client = new MongoClient(uri, {
   serverApi: {
@@ -74,7 +97,6 @@ async function run() {
       const result = await parcelsCollection.findOne(query);
       res.send(result);
     });
-
     // payment related apis
     app.post("/create-payment-session", async (req, res) => {
       const paymentInfo = req.body;
@@ -103,7 +125,6 @@ async function run() {
       });
       res.send({ url: session.url });
     });
-
     app.patch("/verify-payment", async (req, res) => {
       const sessionId = req.query.session_id;
       const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -153,6 +174,20 @@ async function run() {
       }
 
       // res.send({ success: false });
+    });
+
+    app.get("/payment", verifyFBToken, async (req, res) => {
+      const { email } = req.query;
+      const query = {};
+      console.log(req.headers);
+      if (email) {
+        query.customerEmail = email;
+        if (email !== req.decoded_email) {
+          return res.status(403).send({ message: "forbidden access" });
+        }
+      }
+      const result = await paymentsCollection.find(query).toArray();
+      res.send(result);
     });
 
     // Send a ping to confirm a successful connection
