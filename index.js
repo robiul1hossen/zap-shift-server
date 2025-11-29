@@ -59,6 +59,18 @@ async function run() {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
 
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded_email;
+      const query = { email };
+      const user = await usersCollection.findOne(query);
+      console.log(user);
+      if (user.role !== "admin") {
+        res.status(403).send({ message: "forbidden access" });
+      }
+
+      next();
+    };
+
     // database & collections
     const db = client.db("zap_shift");
     const usersCollection = db.collection("users");
@@ -71,7 +83,13 @@ async function run() {
       const result = await usersCollection.find().toArray();
       res.send(result);
     });
-
+    app.get("/users/:id", async (req, res) => {});
+    app.get("/users/:email/role", async (req, res) => {
+      const email = req.params.email;
+      const query = { email };
+      const result = await usersCollection.findOne(query);
+      res.send({ role: result?.role || "user" });
+    });
     app.post("/users", async (req, res) => {
       const user = req.body;
       user.role = "user";
@@ -83,16 +101,21 @@ async function run() {
       const result = await usersCollection.insertOne(user);
       res.send(result);
     });
-    app.patch("/users/:id", async (req, res) => {
-      const { id } = req.params;
-      const updatedInfo = req.body;
-      const query = { _id: new ObjectId(id) };
-      const updateUserRole = {
-        $set: { role: updatedInfo.role },
-      };
-      const result = await usersCollection.updateOne(query, updateUserRole);
-      res.send(result);
-    });
+    app.patch(
+      "/users/:id/role",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const { id } = req.params;
+        const updatedInfo = req.body;
+        const query = { _id: new ObjectId(id) };
+        const updateUserRole = {
+          $set: { role: updatedInfo.role },
+        };
+        const result = await usersCollection.updateOne(query, updateUserRole);
+        res.send(result);
+      }
+    );
 
     // parcels related apis
     app.get("/parcels", async (req, res) => {
@@ -127,6 +150,7 @@ async function run() {
       const result = await parcelsCollection.findOne(query);
       res.send(result);
     });
+
     // payment related apis
     app.post("/create-payment-session", async (req, res) => {
       const paymentInfo = req.body;
