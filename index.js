@@ -61,8 +61,38 @@ async function run() {
 
     // database & collections
     const db = client.db("zap_shift");
+    const usersCollection = db.collection("users");
     const parcelsCollection = db.collection("parcels");
     const paymentsCollection = db.collection("payments");
+    const ridersCollection = db.collection("riders");
+
+    // users related apis
+    app.get("/users", async (req, res) => {
+      const result = await usersCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.post("/users", async (req, res) => {
+      const user = req.body;
+      user.role = "user";
+      const email = user.email;
+      const isExistUser = await usersCollection.findOne({ email });
+      if (isExistUser) {
+        return res.send({ message: "user already exist" });
+      }
+      const result = await usersCollection.insertOne(user);
+      res.send(result);
+    });
+    app.patch("/users/:id", async (req, res) => {
+      const { id } = req.params;
+      const updatedInfo = req.body;
+      const query = { _id: new ObjectId(id) };
+      const updateUserRole = {
+        $set: { role: updatedInfo.role },
+      };
+      const result = await usersCollection.updateOne(query, updateUserRole);
+      res.send(result);
+    });
 
     // parcels related apis
     app.get("/parcels", async (req, res) => {
@@ -175,7 +205,6 @@ async function run() {
 
       // res.send({ success: false });
     });
-
     app.get("/payment", verifyFBToken, async (req, res) => {
       const { email } = req.query;
       const query = {};
@@ -189,6 +218,50 @@ async function run() {
       const result = await paymentsCollection.find(query).toArray();
       res.send(result);
     });
+
+    // riders related apis
+    app.get("/riders", async (req, res) => {
+      const query = {};
+      if (req.query.status) {
+        query.status = req.query.status;
+      }
+      const result = await ridersCollection.find(query).toArray();
+      res.send(result);
+    });
+    app.post("/riders", async (req, res) => {
+      const rider = req.body;
+      rider.status = "pending";
+      rider.createdAt = new Date();
+      const result = await ridersCollection.insertOne(rider);
+      res.send(result);
+    });
+    app.patch("/riders/:id", verifyFBToken, async (req, res) => {
+      const { status } = req.body;
+      const { id } = req.params;
+      const query = { _id: new ObjectId(id) };
+      const update = {
+        $set: {
+          status: status,
+        },
+      };
+      const result = await ridersCollection.updateOne(query, update);
+      if (status === "approved") {
+        const email = req.body.email;
+        const userQuery = { email };
+        const updateUser = {
+          $set: {
+            role: "rider",
+          },
+        };
+        const updateUserResult = await usersCollection.updateOne(
+          userQuery,
+          updateUser
+        );
+        res.send(updateUserResult);
+      }
+      res.send(result);
+    });
+    // TODO delete user role api
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
